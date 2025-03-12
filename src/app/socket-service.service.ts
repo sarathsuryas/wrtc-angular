@@ -10,7 +10,7 @@ export class SocketService {
   private socket: Socket;
 
   constructor() {
-    this.socket = io('https://wrtc-nestjs.onrender.com');
+    this.socket = io('https://wrtc-nestjs-1.onrender.com');
    }
   broadcaster() {
     this.socket.emit('broadcaster');
