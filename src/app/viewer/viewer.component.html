@@ -1,0 +1,11 @@
+<h1>WebRTC Viewer</h1>
+<div class="container">
+  <video id="remoteVideo" #remoteVideo autoplay playsinline></video>
+  <div class="controls">
+    <button id="refreshButton" #refreshButton (click)="refresh()" >Refresh Connection</button>
+  </div>
+  <div id="status" #status class="status offline">
+    Status: No broadcast available
+  </div>
+  <div id="debugInfo" #debugInfo >Debug information will appear here...</div>
+</div>

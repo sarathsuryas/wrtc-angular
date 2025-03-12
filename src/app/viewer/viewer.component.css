@@ -1,0 +1,65 @@
+h1 {
+    text-align: center;
+  }
+  .container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  #remoteVideo {
+    width: 100%;
+    max-width: 640px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    background-color: #f0f0f0; /* To make video area visible even when no video */
+  }
+  .status {
+    margin-top: 20px;
+    padding: 10px;
+    border-radius: 4px;
+    width: 100%;
+    max-width: 640px;
+    text-align: center;
+  }
+  .online {
+    background-color: #d4edda;
+    color: #155724;
+  }
+  .offline {
+    background-color: #f8d7da;
+    color: #721c24;
+  }
+  .waiting {
+    background-color: #fff3cd;
+    color: #856404;
+  }
+  .controls {
+    margin-top: 10px;
+    margin-bottom: 20px;
+  }
+  button {
+    padding: 8px 16px;
+    background-color: #4285f4;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin: 0 5px;
+  }
+  button:hover {
+    background-color: #3367d6;
+  }
+  #debugInfo {
+    margin-top: 20px;
+    padding: 10px;
+    border: 1px solid #ccc;
+    background-color: #f9f9f9;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 12px;
+    max-height: 200px;
+    overflow-y: auto;
+    width: 100%;
+    max-width: 640px;
+  }
