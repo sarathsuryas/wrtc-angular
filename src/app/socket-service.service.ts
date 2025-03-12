@@ -10,7 +10,7 @@ export class SocketService {
   private socket: Socket;
 
   constructor() {
-    this.socket = io(' https://7da2-103-214-235-16.ngrok-free.app');
+    this.socket = io('https://7da2-103-214-235-16.ngrok-free.app');
    }
   broadcaster() {
     this.socket.emit('broadcaster');
