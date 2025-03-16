@@ -1,6 +1,6 @@
 <h1>WebRTC Broadcaster</h1>
 <div class="container">
-  <video #localVideo autoplay muted playsinline></video>
+  <video #localVideo autoplay [muted]="true" playsinline></video>
   <div class="controls">
     <button [disabled]="startButtonDisabled" (click)="startCamera()">Start Camera</button>
     <button [disabled]="broadcastButtonDisabled" (click)="startBroadcasting()">Start Broadcasting</button>
