@@ -27,7 +27,7 @@ export class BroadcasterComponent {
   stopButtonDisabled = true;
 
   constructor() {
-    this.socket = io('https://open-relay-sfu.onrender.com');
+    this.socket = io('https://wrtc-nestjs-1.onrender.com');
   }
 
   ngOnInit() {
