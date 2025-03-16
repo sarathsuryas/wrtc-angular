@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, ElementRef, OnInit, ViewChild } from '@angular/core';
 import { SocketService } from '../socket-service.service';
+import { io, Socket } from 'socket.io-client';
 
 @Component({
   selector: 'app-viewer',
@@ -10,53 +11,104 @@ import { SocketService } from '../socket-service.service';
   styleUrl: './viewer.component.css'
 })
 export class ViewerComponent implements OnInit{
-
-  @ViewChild('remoteVideo') remoteVideo!: ElementRef;
-  @ViewChild('status') statusElement!: ElementRef;
-  @ViewChild('refreshButton') refreshButton!: ElementRef;
-  @ViewChild('debugInfo') debugInfo!: ElementRef;
-  peerConnection!:RTCPeerConnection;
+  @ViewChild('remoteVideo') remoteVideo!: ElementRef<HTMLVideoElement>;
+  
+  socket: Socket;
+  peerConnection: RTCPeerConnection | undefined;
   retryCount = 0;
-  MAX_RETRIES = 5;
- constructor(private _socketService:SocketService) {
-  this._socketService.on("broadcaster_connected").subscribe({
-    next:(value)=>{
-      this._socketService.requestBroadcast()
-    }
-  })
-  this._socketService.on("broadcaster_disconnected").subscribe({
-    next:(value)=>{
+  readonly MAX_RETRIES = 5;
+  
+  statusMessage = 'Status: No broadcast available';
+  statusClass = 'offline';
+  
+  debugMessages: string[] = [];
+
+  constructor() {
+    this.socket = io('https://open-relay-sfu.onrender.com');
+  }
+
+  ngOnInit() {
+    // Socket.io event handlers
+    this.socket.on('connect', () => {
+      this.logDebug('Connected to server');
+      this.requestBroadcast();
+    });
+
+    this.socket.on('broadcaster_connected', () => {
+      this.logDebug('Broadcaster available. Connecting...');
+      this.updateStatus('Broadcaster available. Connecting...', 'waiting');
+      this.requestBroadcast();
+    });
+
+    this.socket.on('broadcaster_disconnected', () => {
+      this.logDebug('Broadcaster disconnected');
+      this.updateStatus('Broadcaster disconnected', 'offline');
       this.closeConnection();
-    }
-  })
-  this._socketService.on('viewer_offer').subscribe({
-    next:(description)=>{
+    });
+
+    this.socket.on('no_broadcaster', () => {
+      this.logDebug('No broadcaster available');
+      this.updateStatus('No broadcast available. Waiting for broadcaster...', 'waiting');
+    });
+
+    this.socket.on('viewer_offer', (description) => {
+      this.logDebug('Received offer from server');
       this.setupPeerConnection(description);
-    }
-  })
-  this._socketService.on('viewer_ice_candidate').subscribe({
-    next:(candidate)=>{
+    });
+
+    this.socket.on('viewer_ice_candidate', (candidate) => {
       if (this.peerConnection) {
+        this.logDebug('Received ICE candidate from server');
         this.peerConnection
           .addIceCandidate(new RTCIceCandidate(candidate))
           .catch((error) => {
-            console.error("Error adding ICE candidate:", error);
+            console.error('Error adding ICE candidate:', error);
+            this.logDebug(`Error adding ICE candidate: ${error.message}`);
           });
       }
-    },
-  })
- }
-  ngOnInit(): void {
-   
+    });
+
+    this.socket.on('error', (data) => {
+      this.logDebug(`Server error: ${data.message}`);
+      this.updateStatus(`Error: ${data.message}`, 'offline');
+    });
   }
-   // Add debug logging 
-   logDebug(message:string) {
-    const timestamp = new Date().toLocaleTimeString();
-    this.debugInfo.nativeElement.innerHTML += `<div>[${timestamp}] ${message}</div>`;
-    this.debugInfo.nativeElement.scrollTop = this.debugInfo.nativeElement.scrollHeight;
-    console.log(message);
+
+  ngOnDestroy() {
+    this.closeConnection();
+    if (this.socket) {
+      this.socket.disconnect();
+    }
   }
-  setupPeerConnection(offer:RTCSessionDescriptionInit) {
+
+  refreshConnection() {
+    this.logDebug('Manually refreshing connection');
+    this.closeConnection();
+    this.requestBroadcast();
+  }
+
+  requestBroadcast() {
+    this.updateStatus('Connecting to broadcast...', 'waiting');
+    this.socket.emit('viewer_request');
+  }
+
+  closeConnection() {
+    if (this.peerConnection) {
+      this.logDebug('Closing existing peer connection');
+      this.peerConnection.close();
+      this.peerConnection = undefined;
+    }
+
+    const videoElement = this.remoteVideo?.nativeElement;
+    if (videoElement && videoElement.srcObject) {
+      this.logDebug('Stopping all tracks in remote video');
+      const stream = videoElement.srcObject as MediaStream;
+      stream.getTracks().forEach((track) => track.stop());
+      videoElement.srcObject = null;
+    }
+  }
+
+  setupPeerConnection(offer: RTCSessionDescriptionInit) {
     const configuration = {
       iceServers: [
         {
@@ -88,87 +140,108 @@ export class ViewerComponent implements OnInit{
     // Close any existing connection
     this.closeConnection();
 
+    this.logDebug('Setting up new peer connection');
     this.peerConnection = new RTCPeerConnection(configuration);
 
     // Handle incoming tracks
     this.peerConnection.ontrack = (event) => {
-
-      if (!this.remoteVideo.nativeElement.srcObject) {
-        this.remoteVideo.nativeElement.srcObject = new MediaStream();
+      this.logDebug(`Received track: ${event.track.kind}`);
+      
+      const videoElement = this.remoteVideo.nativeElement;
+      if (!videoElement.srcObject) {
+        this.logDebug('Setting new stream to video element');
+        videoElement.srcObject = new MediaStream();
       }
 
       // Add this track to the existing stream
-      this.remoteVideo.nativeElement.srcObject.addTrack(event.track);
-     
+      (videoElement.srcObject as MediaStream).addTrack(event.track);
+      
+      const trackCount = (videoElement.srcObject as MediaStream).getTracks().length;
+      const trackTypes = (videoElement.srcObject as MediaStream).getTracks().map(t => t.kind).join(', ');
+      this.logDebug(`Video now has ${trackCount} tracks: ${trackTypes}`);
 
+      this.updateStatus('Connected to broadcast', 'online');
     };
 
     // ICE candidate handling
     this.peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
-        this._socketService.viewerIceCandidate(event.candidate)
+        this.socket.emit('viewer_ice_candidate', event.candidate);
       }
     };
 
     // Connection state change
-    this.peerConnection.onconnectionstatechange = (event) => {
-    
+    this.peerConnection.onconnectionstatechange = () => {
+      if (this.peerConnection) {
+        this.logDebug(`Connection state changed to: ${this.peerConnection.connectionState}`);
 
-      if (this.peerConnection.connectionState === "connected") {
-      } else if (
-        this.peerConnection.connectionState === "disconnected" ||
-        this.peerConnection.connectionState === "failed"
-      ) {
-
-        // Auto retry for failed connections (with limit)
-        if (
-          this.peerConnection.connectionState === "failed" &&
-          this.retryCount < this.MAX_RETRIES
+        if (this.peerConnection.connectionState === 'connected') {
+          this.updateStatus('Connected to broadcast', 'online');
+        } else if (
+          this.peerConnection.connectionState === 'disconnected' ||
+          this.peerConnection.connectionState === 'failed'
         ) {
-          this.retryCount++;
-        
-          setTimeout(this.requestBroadcast, 2000);
+          this.updateStatus('Broadcast connection lost', 'offline');
+
+          // Auto retry for failed connections (with limit)
+          if (
+            this.peerConnection.connectionState === 'failed' &&
+            this.retryCount < this.MAX_RETRIES
+          ) {
+            this.retryCount++;
+            this.logDebug(`Connection failed. Retry attempt ${this.retryCount}/${this.MAX_RETRIES}`);
+            setTimeout(() => this.requestBroadcast(), 2000);
+          }
         }
       }
     };
 
     // ICE connection state change
-    this.peerConnection.oniceconnectionstatechange = (event) => {
-     
+    this.peerConnection.oniceconnectionstatechange = () => {
+      if (this.peerConnection) {
+        this.logDebug(`ICE connection state changed to: ${this.peerConnection.iceConnectionState}`);
+      }
     };
 
     // Set remote description (offer from server)
     this.peerConnection
       .setRemoteDescription(offer)
       .then(() => {
-        return this.peerConnection.createAnswer();
+        this.logDebug('Remote description set successfully, creating answer');
+        if (this.peerConnection) {
+          return this.peerConnection.createAnswer();
+        }
+        return Promise.reject('Peer connection not available');
       })
       .then((answer) => {
-        return this.peerConnection.setLocalDescription(answer);
+        this.logDebug('Answer created, setting local description');
+        if (this.peerConnection) {
+          return this.peerConnection.setLocalDescription(answer);
+        }
+        return Promise.reject('Peer connection not available');
       })
       .then(() => {
-        this._socketService.viewerAnswer(this.peerConnection.localDescription)
+        this.logDebug('Local description set, sending answer to server');
+        if (this.peerConnection && this.peerConnection.localDescription) {
+          this.socket.emit('viewer_answer', this.peerConnection.localDescription);
+        }
       })
       .catch((error) => {
-        console.error("Error setting up peer connection:", error);
+        console.error('Error setting up peer connection:', error);
+        this.logDebug(`Connection error: ${error.message}`);
+        this.updateStatus(`Connection error: ${error.message}`, 'offline');
       });
   }
 
-  closeConnection() {
-    if (this.peerConnection) {
-      this.peerConnection.close();
-    }
+  updateStatus(message: string, className: string) {
+    this.statusMessage = `Status: ${message}`;
+    this.statusClass = className;
+  }
 
-    if (this.remoteVideo.nativeElement.srcObject) {
-      this.remoteVideo.nativeElement.srcObject.getTracks().forEach((track:MediaStreamTrack) => track.stop());
-      this.remoteVideo.nativeElement.srcObject = null;
-    }
-  }
-  refresh() {
-    this.requestBroadcast()
-  }
-  requestBroadcast() {
-   this._socketService.requestBroadcast()
+  logDebug(message: string) {
+    const timestamp = new Date().toLocaleTimeString();
+    this.debugMessages.push(`[${timestamp}] ${message}`);
+    console.log(message);
   }
 }
 

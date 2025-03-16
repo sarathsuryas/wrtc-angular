@@ -1,10 +1,10 @@
 <h1>WebRTC Broadcaster</h1>
 <div class="container">
-  <video #localVideo  autoplay muted playsinline></video>
+  <video #localVideo autoplay muted playsinline></video>
   <div class="controls">
-    <button (click)="startCamera()" #start>Start Camera</button>
-    <button id="broadcastButton" (click)="broadcastVideo()"  #broadcast disabled>Start Broadcasting</button>
-    <button id="stopButton" #stop (click)="stopBroadcasting()"  disabled>Stop Broadcasting</button>
+    <button [disabled]="startButtonDisabled" (click)="startCamera()">Start Camera</button>
+    <button [disabled]="broadcastButtonDisabled" (click)="startBroadcasting()">Start Broadcasting</button>
+    <button [disabled]="stopButtonDisabled" (click)="stopBroadcasting()">Stop Broadcasting</button>
   </div>
-  <div #status class="status offline">Status: Not Broadcasting</div>
+  <div id="status" class="status" [ngClass]="statusClass">{{ statusMessage }}</div>
 </div>
